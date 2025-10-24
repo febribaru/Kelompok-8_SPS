@@ -1,94 +1,107 @@
-import sys
-import requests
-import numpy as np
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QFormLayout, QWidget, QVBoxLayout,
-    QLineEdit, QPushButton, QLabel, QComboBox, QMessageBox, QHBoxLayout
-)
-from PyQt6.QtCore import QTimer
+import sys, requests, numpy as np
+from PyQt6.QtWidgets import *
+from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtGui import QFont
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from edit_panel import EditPanel
 
 class SignalGeneratorWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Signal Generator - Real-Time Oscilloscope")
-        self.setGeometry(100, 100, 1000, 700)
+        self.setGeometry(50, 50, 1400, 850)
 
-        # === State ===
         self.is_running = False
         self.current_signal = "x1"
-        self.t_end = 2.0
-        self.t_duration = 2.0  # Lebar jendela waktu
+        self.t_end = self.t_duration = 2.0
 
-        # === UI Setup ===
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
+        # Main Layout
+        central = QWidget()
+        self.setCentralWidget(central)
+        layout = QVBoxLayout(central)
+        layout.setSpacing(15)
+        layout.setContentsMargins(30, 20, 30, 30)
 
-        # --- Input Form ---
-        form_layout = QFormLayout()
+        # Input Panel
+        self.edit_panel = EditPanel(self)
+        layout.addWidget(self.edit_panel)
 
-        self.a1_input = QLineEdit("1.0"); form_layout.addRow("A1 (x1):", self.a1_input)
-        self.a2_input = QLineEdit("0.5"); form_layout.addRow("A2 (x2):", self.a2_input)
-        self.f1_input = QLineEdit("1.0"); form_layout.addRow("f1 (Hz):", self.f1_input)
-        self.f2_input = QLineEdit("2.0"); form_layout.addRow("f2 (Hz):", self.f2_input)
-        self.phi1_input = QLineEdit("0.0"); form_layout.addRow("φ1 (rad):", self.phi1_input)
-        self.phi2_input = QLineEdit("0.0"); form_layout.addRow("φ2 (rad):", self.phi2_input)
-        self.samples_input = QLineEdit("200"); form_layout.addRow("Samples:", self.samples_input)
+        # Controls
+        controls_container = QWidget()
+        controls_layout = QHBoxLayout(controls_container)
+        controls_layout.setSpacing(15)
+        controls_layout.addWidget(QLabel("Tampilkan:"))
 
-        layout.addLayout(form_layout)
-
-        # --- Control Panel ---
-        control_layout = QHBoxLayout()
-
-        # Dropdown sinyal
         self.signal_combo = QComboBox()
-        self.signal_combo.addItems([
-            "x1(t)", "x2(t)",
-            "y1(t) = x1 + x2",
-            "y2(t) = x1 - x2",
-            "y3(t) = x1 × x2"
-        ])
+        self.signal_combo.addItems(["x1(t)", "x2(t)", "y1(t) = x1 + x2", "y2(t) = x1 - x2", "y3(t) = x1 × x2"])
         self.signal_combo.currentTextChanged.connect(self.on_signal_change)
-        control_layout.addWidget(QLabel("Tampilkan:"))
-        control_layout.addWidget(self.signal_combo)
+        controls_layout.addWidget(self.signal_combo, stretch=1)
 
-        # Start/Stop Button
-        self.start_button = QPushButton("Start Real-Time")
+        # --- Tombol START ---
+        self.start_button = QPushButton("▶ Start")
+        self.start_button.setObjectName("startBtn")
         self.start_button.clicked.connect(self.toggle_realtime)
-        control_layout.addWidget(self.start_button)
+        controls_layout.addWidget(self.start_button)
 
-        # Reset Waktu
-        reset_button = QPushButton("Reset Waktu")
-        reset_button.clicked.connect(self.reset_time)
-        control_layout.addWidget(reset_button)
+        # --- Tombol RESET ---
+        reset_btn = QPushButton("🔄 Reset Waktu")
+        reset_btn.setObjectName("resetBtn")
+        reset_btn.clicked.connect(self.reset_time)
+        controls_layout.addWidget(reset_btn)
 
-        layout.addLayout(control_layout)
+        controls_layout.addStretch()
+        layout.addWidget(controls_container)
 
-        # --- Status ---
+        # Status
         self.status_label = QLabel("Status: Stopped")
-        self.status_label.setStyleSheet("color: gray; font-style: italic;")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(self.status_label)
 
-        # --- Plot Canvas ---
-        self.figure = Figure(figsize=(10, 5), dpi=100)
+        # Plot
+        self.figure = Figure(figsize=(12, 6), dpi=100, facecolor='white')
         self.canvas = FigureCanvas(self.figure)
         layout.addWidget(self.canvas)
 
-        # --- Timer (Update 10x per detik → SUPER SMOOTH) ---
+        # Styles + Timer
+        self.apply_styles()
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_plot)
-        self.timer.setInterval(100)  # 100ms = 10 FPS
+        self.timer.setInterval(100)
 
-    # ==============================
-    # EVENT HANDLERS
-    # ==============================
+    def apply_styles(self):
+        self.setStyleSheet("""
+        QMainWindow {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #d0e3ff, stop:1 #d0d0d0);
+        }
+        QLabel {
+            color: #2c3e50; font-size: 14px; font-weight: bold;
+        }
+        QLineEdit {
+            background: white; color: #2c3e50; border: 2px solid #cbd5e0;
+            border-radius: 8px; padding: 8px 10px; font-size: 14px; font-weight: bold;
+        }
+        QPushButton {
+            color: white; border: none; border-radius: 8px;
+            padding: 10px 20px; font-size: 13px; font-weight: bold; min-width: 140px;
+        }
+        QPushButton#startBtn {
+            background-color: #3182ce;
+        }
+        QPushButton#startBtn:hover {
+            background-color: #2b6cb0;
+        }
+        QPushButton#resetBtn {
+            background-color: #e53e3e;
+        }
+        QPushButton#resetBtn:hover {
+            background-color: #c53030;
+        }
+        """)
 
     def on_signal_change(self, text):
         mapping = {
-            "x1(t)": "x1",
-            "x2(t)": "x2",
+            "x1(t)": "x1", "x2(t)": "x2",
             "y1(t) = x1 + x2": "y1",
             "y2(t) = x1 - x2": "y2",
             "y3(t) = x1 × x2": "y3"
@@ -98,113 +111,56 @@ class SignalGeneratorWindow(QMainWindow):
             self.update_plot()
 
     def toggle_realtime(self):
-        if not self.is_running:
-            self.is_running = True
-            self.start_button.setText("Stop")
-            self.status_label.setText("Status: Running (Real-Time)")
-            self.status_label.setStyleSheet("color: green; font-weight: bold;")
+        self.is_running = not self.is_running
+        if self.is_running:
+            self.start_button.setText("⏸ Stop")
+            self.status_label.setText("✅ Status: Running (Real-Time)")
+            self.status_label.setStyleSheet("color: #38a169; font-size: 13px; font-weight: bold;")
             self.timer.start()
-            self.update_plot()
         else:
-            self.is_running = False
-            self.start_button.setText("Start Real-Time")
-            self.status_label.setText("Status: Stopped")
-            self.status_label.setStyleSheet("color: gray; font-style: italic;")
+            self.start_button.setText("▶ Start")
+            self.status_label.setText("⏸ Status: Stopped")
+            self.status_label.setStyleSheet("color: #718096; font-size: 13px;")
             self.timer.stop()
 
     def reset_time(self):
         self.t_end = self.t_duration
-        self.status_label.setText("Waktu direset!")
         if self.is_running:
             self.update_plot()
 
-    # ==============================
-    # CORE LOGIC
-    # ==============================
-
-    def get_params(self):
-        try:
-            return {
-                "a1": float(self.a1_input.text()),
-                "a2": float(self.a2_input.text()),
-                "f1": float(self.f1_input.text()),
-                "f2": float(self.f2_input.text()),
-                "phi1": float(self.phi1_input.text()),
-                "phi2": float(self.phi2_input.text()),
-                "t_start": max(0.0, self.t_end - self.t_duration),
-                "t_end": self.t_end,
-                "samples": max(50, int(self.samples_input.text()))
-            }
-        except ValueError as e:
-            QMessageBox.critical(self, "Input Error", f"Nilai tidak valid: {e}")
-            return None
-
     def update_plot(self):
-        params = self.get_params()
+        params = self.edit_panel.get_params(self.t_end, self.t_duration)
         if not params:
             return
-
         try:
-            response = requests.post(
-                "http://127.0.0.1:8080/generate",
-                json=params,
-                timeout=1.0
-            )
-            response.raise_for_status()
+            response = requests.post("http://127.0.0.1:8080/generate", json=params, timeout=1.0)
             data = response.json()
+            self.t_end += 0.01
 
-            # === Maju waktu HALUS ===
-            self.t_end += 0.01  # 0.01 detik per update → 100 ms = 10 langkah
-
-            # === Data ===
             t = np.array(data["t"])
             signals = {k: np.array(data[k]) for k in ["x1", "x2", "y1", "y2", "y3"]}
             y = signals[self.current_signal]
 
-            # === Plot ===
             self.figure.clear()
-            ax = self.figure.add_subplot(111)
-
-            # Tampilkan x1 dan x2 (latar belakang)
-            ax.plot(t, signals["x1"], label="x1(t)", color="red", alpha=0.5, linewidth=1.2)
-            ax.plot(t, signals["x2"], label="x2(t)", color="blue", alpha=0.5, linewidth=1.2)
-
-            # Tampilkan hasil operasi (tebal)
+            ax = self.figure.add_subplot(111, facecolor='white')
+            ax.plot(t, signals["x1"], label="x1(t)", color="#ef5350", alpha=0.5, linewidth=2, linestyle='--')
+            ax.plot(t, signals["x2"], label="x2(t)", color="#42a5f5", alpha=0.5, linewidth=2, linestyle='--')
             ax.plot(t, y, label=self.signal_combo.currentText(),
-                    color=self.get_color(self.current_signal), linewidth=2.8)
-
-            # Styling
-            ax.set_title(f"Real-Time: {self.signal_combo.currentText()}", fontsize=14, fontweight='bold')
-            ax.set_xlabel("Waktu (s)")
-            ax.set_ylabel("Amplitudo")
-            ax.legend(loc="upper right")
-            ax.grid(True, alpha=0.3, linestyle="--")
+                    color={"x1":"#ef5350","x2":"#42a5f5","y1":"#66bb6a","y2":"#ab47bc","y3":"#ffa726"}[self.current_signal],
+                    linewidth=3)
+            ax.set_title(f"Real-Time: {self.signal_combo.currentText()}", fontsize=14, fontweight='bold', color="#4383c3", pad=15)
+            ax.set_xlabel("Waktu (s)", fontsize=11, color="#4b72c4")
+            ax.set_ylabel("Amplitudo", fontsize=11, color="#6267ba")
+            ax.legend(loc="upper right", framealpha=0.95, fontsize=10)
+            ax.grid(True, alpha=0.3, linestyle="-", color="#b3b549")
             ax.set_xlim(params["t_start"], params["t_end"])
-
             self.canvas.draw()
-
-        except requests.RequestException as e:
-            self.status_label.setText(f"Backend Error: {str(e)[:50]}...")
-            self.status_label.setStyleSheet("color: red;")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Plot gagal: {str(e)}")
-
-    def get_color(self, key):
-        colors = {
-            "x1": "red",
-            "x2": "blue",
-            "y1": "green",
-            "y2": "purple",
-            "y3": "orange"
-        }
-        return colors.get(key, "black")
-
-# ==============================
-# RUN APP
-# ==============================
+        except:
+            pass
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
     window = SignalGeneratorWindow()
     window.show()
     sys.exit(app.exec())
